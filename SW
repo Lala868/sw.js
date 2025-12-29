@@ -4,14 +4,14 @@ const PAGE_CACHE = 'projobalert-pages-v1';
 
 // 🔥 Yeh 3 images ke URL yahan daal do (apne blog ke)
 const IMAGE_URLS = [
-  'https://www.projobalert.com/images/logo.png',
-  'https://www.projobalert.com/images/banner.jpg',
-  'https://www.projobalert.com/images/background.jpg'
+  'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiwZRrc_bszbsGph4H05U_ZZBKww4qmbGr_oJK0EEYgsffkcDwa6Mq4OylsW5EVeHTLpUYIxch7VhfFIAiCLA0lP6Ki5bwWxKAJ5v0v96HwTmnNhOgJY6PbnFotvwE5i9qMBbzUuKVfe-0T5JL7TvFOhsAJ4gNO0ZzFovGx7QtE09FT-lG1G0SpLctaHRz2/s320/_Pro%20Job%20Alert%20%20Latest%20Govt%20Jobs%20Updates%20%281%29.webp',
+  'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhuhbKCsj1CaI2BHKWaIk02sAQ8p6eDSyHRgvOEcYFUm8cZtrdnrulnhyphenhyphenrsyPtNX3hGArNXHZyLj7sKqFZf_8hXqySkv0j8kdik9ntTknItQfs-dhyphenhyphenYLHgPb4Dyah7SseizgnRzVJTHyNLaV-41v6UAKs-qzJSr_inea2kpW2eLTvbPO0dRv_ALGLLEui_T/s369/Arattai_logo.webp',
+  'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiOk8btVJk5mwn-masTpplFHaNb3Fosw9HBYYTHF_A_WGMcUBvFqICyndsnyVs8iOMIavURiy04hHK8c7JHAIASv5FmU6guuPEKeUjGL7LZe1xinrZUSpcvpeMmUGFKMN8yaSl0aid5_oKbSkO_NbMgrccaOv7uR06_lzIeDCJ2_-JyJnbjhnO7-oVdMdYU/s370/Untitled%20design%20%282%29.webp'
   // Aur agar 4th hai toh yahan add kar dena
 ];
 
 // Image cache TTL: 24 hours (in milliseconds)
-const IMAGE_MAX_AGE = 24 * 60 * 60 * 1000;
+const IMAGE_MAX_AGE = 1 * 60 * 60 * 1000;
 
 // Page cache TTL: 1 hour
 const PAGE_MAX_AGE = 1 * 60 * 60 * 1000;
