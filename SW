@@ -1,38 +1,113 @@
-const CACHE_NAME = 'projob-ultra-cache-v2';
-const IMAGE_CACHE = 'projob-images-permanent';
+const CACHE_NAME = 'projobalert-cache-v3';
+const IMAGE_CACHE = 'projobalert-images-v1';
+const PAGE_CACHE = 'projobalert-pages-v1';
 
-// Aapki 4 Main Images (Logo, Favicon, etc.)
-const STATIC_IMAGES = [
-  'https://your-image-url-1.png',
-  'https://your-image-url-2.png',
-  'https://your-image-url-3.png',
-  'https://your-image-url-4.png'
+// 🔥 Yeh 3 images ke URL yahan daal do (apne blog ke)
+const IMAGE_URLS = [
+  'https://www.projobalert.com/images/logo.png',
+  'https://www.projobalert.com/images/banner.jpg',
+  'https://www.projobalert.com/images/background.jpg'
+  // Aur agar 4th hai toh yahan add kar dena
 ];
 
-// 1. Install & Cache Static Images (Long TTL)
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(IMAGE_CACHE).then((cache) => cache.addAll(STATIC_IMAGES))
-  );
-  self.skipWaiting();
-});
+// Image cache TTL: 24 hours (in milliseconds)
+const IMAGE_MAX_AGE = 24 * 60 * 60 * 1000;
 
-// 2. Smart Fetch Strategy (Stale-While-Revalidate)
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+// Page cache TTL: 1 hour
+const PAGE_MAX_AGE = 1 * 60 * 60 * 1000;
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        // Naya content milte hi cache update karo
-        if (networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-        }
-        return networkResponse;
-      });
-      // Pehle cache dikhao (Fast), background mein network chalta rahega
-      return cachedResponse || fetchPromise;
-    })
+// Install: Sirf images pre-cache karo (fast first load ke liye bhi help)
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(IMAGE_CACHE)
+      .then(cache => cache.addAll(IMAGE_URLS))
+      .then(() => self.skipWaiting())
   );
 });
+
+// Activate: Purane cache delete karo
+self.addEventListener('activate', event => {
+  const cachesToKeep = [CACHE_NAME, IMAGE_CACHE, PAGE_CACHE];
+  event.waitUntil(
+    caches.keys().then(keyList =>
+      Promise.all(
+        keyList.map(key => {
+          if (!cachesToKeep.includes(key)) {
+            return caches.delete(key);
+          }
+        })
+      )
+    ).then(() => self.clients.claim())
+  );
+});
+
+// Fetch: Smart caching logic
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // 1. Images ke liye: Cache first, stale-while-revalidate
+  if (IMAGE_URLS.some(img => url.href.startsWith(img)) || url.pathname.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+    event.respondWith(
+      caches.open(IMAGE_CACHE).then(cache => {
+        return cache.match(event.request).then(cachedResponse => {
+          // Agar cache mein hai aur fresh hai (24 hours se kam purana)
+          if (cachedResponse) {
+            const cachedTime = new Date(cachedResponse.headers.get('date') || Date.now()).getTime();
+            if (Date.now() - cachedTime < IMAGE_MAX_AGE) {
+              return cachedResponse;
+            }
+          }
+          // Warna network se lao aur cache update karo
+          return fetch(event.request).then(networkResponse => {
+            const responseCopy = networkResponse.clone();
+            responseCopy.headers.set('date', new Date().toUTCString());
+            cache.put(event.request, responseCopy);
+            return networkResponse;
+          }).catch(() => cachedResponse || fetch(event.request)); // offline fallback
+        });
+      })
+    );
+    return;
+  }
+
+  // 2. Blogger pages/posts ke liye: Cache with 1 hour TTL
+  if (url.origin === location.origin && (url.pathname === '/' || url.pathname.includes('.html'))) {
+    event.respondWith(
+      caches.open(PAGE_CACHE).then(cache => {
+        return cache.match(event.request).then(cachedResponse => {
+          if (cachedResponse) {
+            const fetchedTime = new Date(cachedResponse.headers.get('sw-cache-time')).getTime();
+            if (Date.now() - fetchedTime < PAGE_MAX_AGE) {
+              // Background mein update karo (stale-while-revalidate)
+              event.waitUntil(updatePageCache(event.request));
+              return cachedResponse;
+            }
+          }
+          return updatePageCache(event.request);
+        });
+      })
+    );
+    return;
+  }
+
+  // Baaki sab (CSS/JS inline hai toh HTML ke saath aayega) → normal fetch
+  event.respondWith(fetch(event.request));
+});
+
+// Helper: Page cache update karega
+async function updatePageCache(request) {
+  const response = await fetch(request);
+  if (response && response.status === 200) {
+    const responseToCache = response.clone();
+    const headers = new Headers(responseToCache.headers);
+    headers.set('sw-cache-time', Date.now());
+    const cachedResponse = new Response(responseToCache.body, {
+      status: responseToCache.status,
+      statusText: responseToCache.statusText,
+      headers: headers
+    });
+    const cache = await caches.open(PAGE_CACHE);
+    cache.put(request, cachedResponse);
+  }
+  return response;
+}
