@@ -1,90 +1,85 @@
-const CACHE_NAME = 'projobalert-cache-v4';  // Version badal diya taaki fresh install ho
-const IMAGE_CACHE = 'projobalert-images-v2';
-const PAGE_CACHE = 'projobalert-pages-v2';
+const CACHE_VERSION = 'projobalert-v5';  // Update karte time badal dena
+const IMAGE_CACHE = 'projobalert-images-v3';
+const PAGE_CACHE = 'projobalert-pages-v3';
 
-// 🔥 Tere 3 images ke exact URLs (tune diye hue)
-const IMAGE_URLS = [
+// 🔥 Tere 4 images ke URLs yahan daal (jitne bhi hain)
+const IMPORTANT_IMAGE_URLS = [
   'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiwZRrc_bszbsGph4H05U_ZZBKww4qmbGr_oJK0EEYgsffkcDwa6Mq4OylsW5EVeHTLpUYIxch7VhfFIAiCLA0lP6Ki5bwWxKAJ5v0v96HwTmnNhOgJY6PbnFotvwE5i9qMBbzUuKVfe-0T5JL7TvFOhsAJ4gNO0ZzFovGx7QtE09FT-lG1G0SpLctaHRz2/s320/_Pro%20Job%20Alert%20%20Latest%20Govt%20Jobs%20Updates%20%281%29.webp',
   'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhuhbKCsj1CaI2BHKWaIk02sAQ8p6eDSyHRgvOEcYFUm8cZtrdnrulnhyphenhyphenrsyPtNX3hGArNXHZyLj7sKqFZf_8hXqySkv0j8kdik9ntTknItQfs-dhyphenhyphenYLHgPb4Dyah7SseizgnRzVJTHyNLaV-41v6UAKs-qzJSr_inea2kpW2eLTvbPO0dRv_ALGLLEui_T/s369/Arattai_logo.webp',
   'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiOk8btVJk5mwn-masTpplFHaNb3Fosw9HBYYTHF_A_WGMcUBvFqICyndsnyVs8iOMIavURiy04hHK8c7JHAIASv5FmU6guuPEKeUjGL7LZe1xinrZUSpcvpeMmUGFKMN8yaSl0aid5_oKbSkO_NbMgrccaOv7uR06_lzIeDCJ2_-JyJnbjhnO7-oVdMdYU/s370/Untitled%20design%20%282%29.webp'
+  // 4th image add kar dena yahan
 ];
 
-// Image TTL: 24 hours (yeh change kar – ab fast rahega!)
-const IMAGE_MAX_AGE = 24 * 60 * 60 * 1000;
-
-// Page TTL: 1 hour (job updates ke liye safe)
-const PAGE_MAX_AGE = 1 * 60 * 60 * 1000;
+// Images ka TTL (long term – 7 days = 604800000 ms, change kar sakta hai)
+const IMAGE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;  // 7 days – kam/jyada kar lo
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(IMAGE_CACHE)
-      .then(cache => cache.addAll(IMAGE_URLS))
+      .then(cache => cache.addAll(IMPORTANT_IMAGE_URLS))
       .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', event => {
-  const cachesToKeep = [CACHE_NAME, IMAGE_CACHE, PAGE_CACHE];
+  const cachesToKeep = [CACHE_VERSION, IMAGE_CACHE, PAGE_CACHE];
   event.waitUntil(
-    caches.keys().then(keyList =>
-      Promise.all(keyList.map(key => {
+    caches.keys().then(keys => Promise.all(
+      keys.map(key => {
         if (!cachesToKeep.includes(key)) return caches.delete(key);
-      }))
-    ).then(() => self.clients.claim())
+      })
+    )).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // 1. Images ke liye: Cache first + normalize URL (s320/s369 ignore)
-  if (url.pathname.includes('blogger.googleusercontent.com') && url.pathname.match(/\.(webp|jpg|png|gif|svg)$/i)) {
-    // Normalize URL: size parameter hata do taaki cache hit ho
-    const normalizedUrl = url.origin + url.pathname;
+  // 1. All Blogger images (thumbnails bhi) – aggressive long cache + normalize URL
+  if (url.hostname.includes('blogger.googleusercontent.com') && url.pathname.match(/\.(webp|jpg|jpeg|png|gif|svg)$/i)) {
+    const normalizedKey = url.origin + url.pathname.split('/s')[0] + url.pathname.substring(url.pathname.lastIndexOf('/')); // size ignore
     event.respondWith(
       caches.open(IMAGE_CACHE).then(cache => {
-        return cache.match(normalizedUrl).then(cached => {
+        return cache.match(normalizedKey).then(cached => {
           if (cached) {
-            const cachedTime = new Date(cached.headers.get('date') || 0).getTime();
-            if (Date.now() - cachedTime < IMAGE_MAX_AGE) return cached;
+            const age = Date.now() - (new Date(cached.headers.get('date') || 0).getTime());
+            if (age < IMAGE_MAX_AGE) return cached;
           }
           return fetch(event.request).then(response => {
-            if (response && response.status === 200) {
+            if (response.ok) {
               const copy = response.clone();
               copy.headers.set('date', new Date().toUTCString());
-              cache.put(normalizedUrl, copy);
+              cache.put(normalizedKey, copy);
             }
             return response;
-          }).catch(() => cached);
+          }).catch(() => cached || fetch(event.request));
         });
       })
     );
     return;
   }
 
-  // 2. Pages/Posts ke liye: Stale-while-revalidate (instant cache, background update)
-  if (url.origin === location.origin && (url.pathname === '/' || url.pathname.endsWith('.html'))) {
+  // 2. Pages & Posts – True Stale-While-Revalidate (instant cached + silent background fresh)
+  if (url.origin === self.location.origin && (url.pathname === '/' || url.pathname.endsWith('.html') || url.pathname.includes('/search'))) {
     event.respondWith(
       caches.open(PAGE_CACHE).then(cache => {
-        return cache.match(event.request).then(cached => {
-          const fetchPromise = fetch(event.request).then(response => {
-            if (response && response.status === 200) {
-              const copy = response.clone();
-              const headers = new Headers(copy.headers);
-              headers.set('sw-cache-time', Date.now());
-              const cachedRes = new Response(copy.body, { status: copy.status, headers });
-              cache.put(event.request, cachedRes);
+        return cache.match(event.request).then(cachedResponse => {
+          // Always fetch fresh in background
+          const fetchPromise = fetch(event.request).then(networkResponse => {
+            if (networkResponse && networkResponse.status === 200) {
+              const copy = networkResponse.clone();
+              cache.put(event.request, copy);
             }
-            return response;
-          }).catch(() => cached);
+            return networkResponse;
+          });
 
-          if (cached) {
-            const cachedTime = new Date(cached.headers.get('sw-cache-time') || 0).getTime();
-            if (Date.now() - cachedTime < PAGE_MAX_AGE) {
-              event.waitUntil(fetchPromise);  // Background update
-              return cached;
-            }
+          // Agar cache hai toh instant serve karo + background update
+          if (cachedResponse) {
+            event.waitUntil(fetchPromise);  // Silent background update
+            return cachedResponse;
           }
+
+          // Naya page – network se lao aur cache mein daalo
           return fetchPromise;
         });
       })
@@ -92,6 +87,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Baaki requests normal
+  // Baaki sab normal
   event.respondWith(fetch(event.request));
 });
